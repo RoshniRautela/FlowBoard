@@ -1,0 +1,33 @@
+import mongoose from 'mongoose';
+
+const boardSchema = new mongoose.Schema({
+
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 100
+  },
+  description: {
+    type: String,
+    trim: true,
+    default: ""
+  },
+  owner:{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  members: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+},
+{  timestamps: true}
+);
+
+boardSchema.index({ members: 1 });
+
+const Board = mongoose.model('Board', boardSchema);
+
+export default Board;
