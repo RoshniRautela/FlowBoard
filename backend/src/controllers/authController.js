@@ -4,7 +4,6 @@ import User from "../models/User.js";
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-
 export const register = async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password)
