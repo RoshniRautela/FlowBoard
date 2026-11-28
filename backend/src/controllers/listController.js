@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import List from "../models/List.js";
 import Card from "../models/Card.js";
 import { findBoardForMember } from "../utils/boardAccess.js";
+import { emitToBoard } from "../socket.js";
 
 const GAP = 1000;
 
@@ -33,6 +34,7 @@ export const createList = async (req, res) => {
     board: board._id,
     position: last ? last.position + GAP : GAP,
   });
+  emitToBoard(board._id, "list:created", list);
   res.status(201).json(list);
 };
 
@@ -52,6 +54,7 @@ export const updateList = async (req, res) => {
     list.position = position;
   }
   await list.save();
+  emitToBoard(list.board, "list:updated", list);
   res.json(list);
 };
 
@@ -61,6 +64,7 @@ export const deleteList = async (req, res) => {
 
   await Card.deleteMany({ list: list._id });
   await list.deleteOne();
+  emitToBoard(list.board, "list:deleted", { listId: list._id });
   res.json({ message: "List deleted" });
 };
 

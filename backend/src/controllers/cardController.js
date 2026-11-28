@@ -3,6 +3,7 @@ import Card from "../models/Card.js";
 import List from "../models/List.js";
 import { findBoardForMember } from "../utils/boardAccess.js";
 import { loadList } from "./listController.js";
+import { emitToBoard } from "../socket.js";
 
 const GAP = 1000;
 
@@ -36,6 +37,7 @@ export const createCard = async (req, res) => {
     board: list.board,
     position: last ? last.position + GAP : GAP,
   });
+  emitToBoard(card.board, "card:created", card);
   res.status(201).json(card);
 };
 
@@ -64,6 +66,7 @@ export const updateCard = async (req, res) => {
   }
 
   await card.save();
+  emitToBoard(card.board, "card:updated", card);
   res.json(card);
 };
 
@@ -72,6 +75,7 @@ export const deleteCard = async (req, res) => {
   if (!found) return;
 
   await found.card.deleteOne();
+  emitToBoard(found.card.board, "card:deleted", { cardId: found.card._id });
   res.json({ message: "Card deleted" });
 };
 
@@ -96,5 +100,6 @@ export const moveCard = async (req, res) => {
 
   card.position = position;
   await card.save();
+  emitToBoard(card.board, "card:updated", card);
   res.json(card);
 };

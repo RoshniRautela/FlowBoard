@@ -3,6 +3,7 @@ import Board from "../models/Board.js";
 import List from "../models/List.js";
 import Card from "../models/Card.js";
 import User from "../models/User.js";
+import { emitToBoard } from "../socket.js";
 
 // Finds the board and checks the user may access it.
 // Returns null (after sending the error response) if they may not.
@@ -73,6 +74,7 @@ export const deleteBoard = async (req, res) => {
   await Card.deleteMany({ board: board._id });
   await List.deleteMany({ board: board._id });
   await board.deleteOne();
+  emitToBoard(board._id, "board:deleted", { boardId: board._id });
   res.json({ message: "Board deleted" });
 };
 
@@ -89,5 +91,6 @@ export const addMember = async (req, res) => {
   board.members.push(user._id);
   await board.save();
   await board.populate("members", "name email");
+  emitToBoard(board._id, "board:updated", board);
   res.json(board);
 };

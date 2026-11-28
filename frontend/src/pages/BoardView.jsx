@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import { DragDropContext } from "@hello-pangea/dnd";
+import { io } from "socket.io-client";
 import Navbar from "../components/Navbar";
 import ListColumn from "../components/ListColumn";
+
+const upsert = (arr, item) =>
+  arr.some((x) => x._id === item._id)
+    ? arr.map((x) => (x._id === item._id ? item : x))
+    : [...arr, item];
 
 export default function BoardView() {
   const { id } = useParams();
@@ -18,17 +24,54 @@ export default function BoardView() {
   const [newList, setNewList] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
 
-  useEffect(() => {
-    api
+  const navigate = useNavigate();
+
+  const fetchBoard = useCallback(() => {
+    return api
       .get(`/boards/${id}`)
       .then(({ data }) => {
         setBoard(data.board);
         setLists(data.lists);
         setCards(data.cards);
       })
-      .catch((err) => setLoadError(err.response?.data?.message || "Could not load board"))
-      .finally(() => setLoading(false));
+      .catch((err) => setLoadError(err.response?.data?.message || "Could not load board"));
   }, [id]);
+
+  useEffect(() => {
+    fetchBoard().finally(() => setLoading(false));
+  }, [fetchBoard]);
+
+  useEffect(() => {
+    const socket = io(import.meta.env.VITE_SOCKET_URL, {
+      auth: { token: localStorage.getItem("token") },
+    });
+
+    socket.on("connect", () => {
+      console.log("socket connected", socket.id);
+      socket.emit("board:join", id);
+    });
+    socket.on("connect_error", (err) => console.log("socket error:", err.message));// runs again after a reconnect
+    socket.io.on("reconnect", fetchBoard); // catch up on anything missed while offline
+
+    socket.on("list:created", (list) => setLists((p) => upsert(p, list)));
+    socket.on("list:updated", (list) => setLists((p) => upsert(p, list)));
+    socket.on("list:deleted", ({ listId }) => {
+      setLists((p) => p.filter((l) => l._id !== listId));
+      setCards((p) => p.filter((c) => c.list !== listId));
+    });
+    socket.on("card:created", (card) => setCards((p) => upsert(p, card)));
+    socket.on("card:updated", (card) => setCards((p) => upsert(p, card)));
+    socket.on("card:deleted", ({ cardId }) =>
+      setCards((p) => p.filter((c) => c._id !== cardId))
+    );
+    socket.on("board:updated", (b) => setBoard(b));
+    socket.on("board:deleted", () => navigate("/"));
+
+    return () => {
+      socket.emit("board:leave", id);
+      socket.disconnect();
+    };
+  }, [id, fetchBoard, navigate]);
 
   // Runs an API action; shows the server's message if it fails
   const run = async (action, fallback) => {
@@ -45,7 +88,7 @@ export default function BoardView() {
     if (!newList.trim()) return;
     run(async () => {
       const { data } = await api.post(`/boards/${id}/lists`, { title: newList });
-      setLists((prev) => [...prev, data]);
+      setLists((prev) => upsert(prev, data));
       setNewList("");
     }, "Could not add list");
   };
@@ -66,7 +109,7 @@ export default function BoardView() {
   const addCard = (listId, title) =>
     run(async () => {
       const { data } = await api.post(`/lists/${listId}/cards`, { title });
-      setCards((prev) => [...prev, data]);
+      setCards((prev) => upsert(prev, data));
     }, "Could not add card");
 
   const updateCard = (cardId, title) =>
@@ -192,7 +235,9 @@ export default function BoardView() {
               <ListColumn
                 key={list._id}
                 list={list}
-                cards={cards.filter((c) => c.list === list._id)}
+                cards={cards
+                  .filter((c) => c.list === list._id)
+                  .sort((a, b) => a.position - b.position)}
                 onRename={renameList}
                 onDelete={deleteList}
                 onAddCard={addCard}
@@ -200,21 +245,21 @@ export default function BoardView() {
                 onDeleteCard={deleteCard}
               />
             ))}
+
+            <form onSubmit={addList} className="w-72 shrink-0 bg-slate-200/60 rounded-xl p-3 flex gap-1">
+              <input
+                value={newList}
+                onChange={(e) => setNewList(e.target.value)}
+                placeholder="+ Add a list"
+                maxLength={100}
+                className="flex-1 min-w-0 border rounded px-2 py-1 text-sm bg-white"
+              />
+              <button className="text-sm text-indigo-600 font-medium px-1">Add</button>
+            </form>
           </div>
         </DragDropContext>
-
-        <form onSubmit={addList} className="w-72 shrink-0 bg-slate-200/60 rounded-xl p-3 flex gap-1">
-          <input
-            value={newList}
-            onChange={(e) => setNewList(e.target.value)}
-            placeholder="+ Add a list"
-            maxLength={100}
-            className="flex-1 min-w-0 border rounded px-2 py-1 text-sm bg-white"
-          />
-          <button className="text-sm text-indigo-600 font-medium px-1">Add</button>
-        </form>
       </div>
     </div>
-
-  );
+  )
+    ;
 }
