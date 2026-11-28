@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import { DragDropContext } from "@hello-pangea/dnd";
 import Navbar from "../components/Navbar";
 import ListColumn from "../components/ListColumn";
 
@@ -80,6 +81,50 @@ export default function BoardView() {
       setCards((prev) => prev.filter((c) => c._id !== cardId));
     }, "Could not delete card");
 
+  const onDragEnd = async ({ draggableId, source, destination }) => {
+    if (!destination) return; // dropped outside any list
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    )
+      return; // didn't move
+
+    // Cards in the destination list, in order, without the card being moved
+    const destCards = cards
+      .filter((c) => c.list === destination.droppableId && c._id !== draggableId)
+      .sort((a, b) => a.position - b.position);
+
+    const before = destCards[destination.index - 1];
+    const after = destCards[destination.index];
+
+    let position;
+    if (before && after) position = (before.position + after.position) / 2;
+    else if (after) position = after.position / 2;
+    else if (before) position = before.position + 1000;
+    else position = 1000;
+
+    // Update the UI immediately, and keep the old state in case the server fails
+    const previousCards = cards;
+    setError("");
+    setCards((prev) =>
+      prev.map((c) =>
+        c._id === draggableId
+          ? { ...c, list: destination.droppableId, position }
+          : c
+      )
+    );
+
+    try {
+      await api.put(`/cards/${draggableId}/move`, {
+        listId: destination.droppableId,
+        position,
+      });
+    } catch (err) {
+      setCards(previousCards); // roll back
+      setError(err.response?.data?.message || "Could not move card");
+    }
+  };
+
   const addMember = (e) => {
     e.preventDefault();
     if (!memberEmail.trim()) return;
@@ -141,32 +186,35 @@ export default function BoardView() {
       {error && <p className="px-6 text-sm text-red-600">{error}</p>}
 
       <div className="flex-1 overflow-x-auto px-6 pb-6">
-        <div className="flex gap-4 items-start">
-          {lists.map((list) => (
-            <ListColumn
-              key={list._id}
-              list={list}
-              cards={cards.filter((c) => c.list === list._id)}
-              onRename={renameList}
-              onDelete={deleteList}
-              onAddCard={addCard}
-              onUpdateCard={updateCard}
-              onDeleteCard={deleteCard}
-            />
-          ))}
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="flex gap-4 items-start">
+            {lists.map((list) => (
+              <ListColumn
+                key={list._id}
+                list={list}
+                cards={cards.filter((c) => c.list === list._id)}
+                onRename={renameList}
+                onDelete={deleteList}
+                onAddCard={addCard}
+                onUpdateCard={updateCard}
+                onDeleteCard={deleteCard}
+              />
+            ))}
+          </div>
+        </DragDropContext>
 
-          <form onSubmit={addList} className="w-72 shrink-0 bg-slate-200/60 rounded-xl p-3 flex gap-1">
-            <input
-              value={newList}
-              onChange={(e) => setNewList(e.target.value)}
-              placeholder="+ Add a list"
-              maxLength={100}
-              className="flex-1 min-w-0 border rounded px-2 py-1 text-sm bg-white"
-            />
-            <button className="text-sm text-indigo-600 font-medium px-1">Add</button>
-          </form>
-        </div>
+        <form onSubmit={addList} className="w-72 shrink-0 bg-slate-200/60 rounded-xl p-3 flex gap-1">
+          <input
+            value={newList}
+            onChange={(e) => setNewList(e.target.value)}
+            placeholder="+ Add a list"
+            maxLength={100}
+            className="flex-1 min-w-0 border rounded px-2 py-1 text-sm bg-white"
+          />
+          <button className="text-sm text-indigo-600 font-medium px-1">Add</button>
+        </form>
       </div>
     </div>
+
   );
 }

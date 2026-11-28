@@ -1,3 +1,4 @@
+import { Droppable, Draggable } from "@hello-pangea/dnd";
 import { useState } from "react";
 import CardItem from "./CardItem";
 
@@ -56,11 +57,31 @@ export default function ListColumn({
         )}
       </div>
 
-      <div className="flex flex-col gap-2">
-        {cards.map((card) => (
-          <CardItem key={card._id} card={card} onUpdate={onUpdateCard} onDelete={onDeleteCard} />
-        ))}
-      </div>
+      <Droppable droppableId={list._id}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className={`flex flex-col gap-2 min-h-10 rounded-lg transition-colors ${snapshot.isDraggingOver ? "bg-slate-300" : ""
+              }`}
+          >
+            {cards.map((card, index) => (
+              <Draggable key={card._id} draggableId={card._id} index={index}>
+                {(drag) => (
+                  <div
+                    ref={drag.innerRef}
+                    {...drag.draggableProps}
+                    {...drag.dragHandleProps}
+                  >
+                    <CardItem card={card} onUpdate={onUpdateCard} onDelete={onDeleteCard} />
+                  </div>
+                )}
+              </Draggable>
+            ))}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
 
       <form onSubmit={submitCard} className="flex gap-1">
         <input
